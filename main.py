@@ -1,6 +1,8 @@
 import time
 from machine import Pin, PWM, I2C
 from ssd1306 import SSD1306_I2C
+from pico_dht_22 import PicoDHT22
+
 
 BUZZER_PIN = 15
 buzzer = PWM(Pin(BUZZER_PIN))
@@ -33,8 +35,10 @@ echo = Pin(ECHO_PIN, Pin.IN)
 
 i2c = I2C(0, sda=Pin(0), scl=Pin(1), freq=400000)
 oled = SSD1306_I2C(128, 64, i2c)
-oled.text("Hello Humans", 0, 0)
+oled.text("Hello Anirudh", 0, 0)
 oled.show()
+
+dht_sensor=PicoDHT22(Pin(28,Pin.IN,Pin.PULL_UP),dht11=False)
 
 MIN_DUTY = 1802
 MAX_DUTY = 7864
@@ -74,18 +78,6 @@ def get_key():
         row_pins[r].value(0)
     return None
 
-def move_forward():
-    set_servo_angle(servo1, 90)
-    set_servo_angle(servo2, 90)
-
-def move_backward():
-    set_servo_angle(servo1, 0)
-    set_servo_angle(servo2, 0)
-
-def stop():
-    set_servo_angle(servo1, 45)
-    set_servo_angle(servo2, 45)
-
 def buzz():
     buzzer.freq(1000)
     buzzer.duty_u16(32768)
@@ -96,24 +88,31 @@ time.sleep(1)
 
 while True:
     distance = measure_distance()
-    if distance < 50:
-        buzz()
-        stop()
+    T,H = dht_sensor.read()
+    if T is None:
+        continue
+        print(" sensor error")
     else:
-        key = get_key()
-        if key is not None:
-            print(f"Key pressed: {key}")
-            oled.fill(0)
-            oled.text(f"Key pressed: {key}", 0, 0)
-            oled.show()
-            if key == '1':
-                move_forward()
-            elif key == '2':
-                stop()
-            elif key == '3':
-                move_backward()
-            buzz()
+        print("{}'C  {}%".format(T,H))
+        oled.text(str('H: ' +"{:0.2f}".format(H)+ "  %",2),0,20)
+        oled.text(str('T: ' +"{:0.2f}".format(T)+ "  C",2),0,30)
+        oled.show()
+    key = get_key()
+    if key is not None:
+        print(f"Key pressed: {key}")
+        oled.text(f"Key pressed: {key}", 0, 40)
+        oled.show()
+        if key == '1':
+            set_servo_angle(servo1,60)
+            set_servo_angle(servo2,60)
+            time.sleep(2)
+        elif key == '2':
+            set_servo_angle(servo1,180)
+            set_servo_angle(servo2,180)
+        elif key == '3':
+            set_servo_angle(servo1,90)
+            set_servo_angle(servo2,90)
+        buzz()
     oled.text("Distance: {:.2f} cm".format(distance), 0, 10)
     oled.show()
-    print("Distance: {:.2f} cm".format(distance))
-    time.sleep(1)
+    time.sleep(0.1)
