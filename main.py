@@ -1,13 +1,18 @@
 import time
-from machine import Pin, PWM,I2C
+from machine import Pin, PWM, I2C
 from ssd1306 import SSD1306_I2C
 
-# Define buzzer pin
 BUZZER_PIN = 15
 buzzer = PWM(Pin(BUZZER_PIN))
 
+SERVO1_PIN = 14
+SERVO2_PIN = 16
+servo1 = PWM(Pin(SERVO1_PIN))
+servo2 = PWM(Pin(SERVO2_PIN))
 
-# Define keypad
+servo1.freq(50)
+servo2.freq(50)
+
 ROWS = 4
 COLS = 4
 keys = [
@@ -20,12 +25,42 @@ keys = [
 row_pins = [Pin(6, Pin.OUT), Pin(7, Pin.OUT), Pin(8, Pin.OUT), Pin(9, Pin.OUT)]
 col_pins = [Pin(10, Pin.IN, Pin.PULL_DOWN), Pin(11, Pin.IN, Pin.PULL_DOWN), Pin(12, Pin.IN, Pin.PULL_DOWN), Pin(13, Pin.IN, Pin.PULL_DOWN)]
 
+TRIG_PIN = 2
+ECHO_PIN = 3
 
-# screen
+trig = Pin(TRIG_PIN, Pin.OUT)
+echo = Pin(ECHO_PIN, Pin.IN)
+
 i2c = I2C(0, sda=Pin(0), scl=Pin(1), freq=400000)
 oled = SSD1306_I2C(128, 64, i2c)
-oled.text("Hiiiii", 0,0)
+oled.text("Hello Humans", 0, 0)
 oled.show()
+
+MIN_DUTY = 1802
+MAX_DUTY = 7864
+
+def angle_to_duty(angle):
+    return int(MIN_DUTY + (angle / 180) * (MAX_DUTY - MIN_DUTY))
+
+def set_servo_angle(servo, angle):
+    if 0 <= angle <= 180:
+        duty = angle_to_duty(angle)
+        servo.duty_u16(duty)
+        print(f"{servo} - {angle} degrees")
+
+def measure_distance():
+    trig.low()
+    time.sleep_us(2)
+    trig.high()
+    time.sleep_us(10)
+    trig.low()
+    while echo.value() == 0:
+        pulse_start = time.ticks_us()
+    while echo.value() == 1:
+        pulse_end = time.ticks_us()
+    pulse_duration = time.ticks_diff(pulse_end, pulse_start)
+    distance = pulse_duration * 0.0343 / 2
+    return distance
 
 def get_key():
     for r in range(ROWS):
@@ -33,25 +68,52 @@ def get_key():
         for c in range(COLS):
             if col_pins[c].value():
                 while col_pins[c].value():
-                    pass  # Wait until key is released
+                    pass
                 row_pins[r].value(0)
                 return keys[r][c]
         row_pins[r].value(0)
-    return None  # No key pressed
+    return None
+
+def move_forward():
+    set_servo_angle(servo1, 90)
+    set_servo_angle(servo2, 90)
+
+def move_backward():
+    set_servo_angle(servo1, 0)
+    set_servo_angle(servo2, 0)
+
+def stop():
+    set_servo_angle(servo1, 45)
+    set_servo_angle(servo2, 45)
 
 def buzz():
-    buzzer.freq(1000)  # Frequency in Hz
-    buzzer.duty_u16(32768)  # Adjust the duty cycle for volume (50% in this case)
+    buzzer.freq(1000)
+    buzzer.duty_u16(32768)
     time.sleep(0.1)
-    buzzer.duty_u16(0)  # Turn off buzzer
+    buzzer.duty_u16(0)
 
-# Main loop
+time.sleep(1)
+
 while True:
-    key = get_key()
-    if key is not None:
-        print(f"Key pressed: {key}")  
-        oled.text(f"Key pressed: {key}", 0,0)
-        oled.show()
-        # Print the key pressed to the console
-        buzz()  # Sound buzzer when key is pressed
-    time.sleep(0.1)
+    distance = measure_distance()
+    if distance < 50:
+        buzz()
+        stop()
+    else:
+        key = get_key()
+        if key is not None:
+            print(f"Key pressed: {key}")
+            oled.fill(0)
+            oled.text(f"Key pressed: {key}", 0, 0)
+            oled.show()
+            if key == '1':
+                move_forward()
+            elif key == '2':
+                stop()
+            elif key == '3':
+                move_backward()
+            buzz()
+    oled.text("Distance: {:.2f} cm".format(distance), 0, 10)
+    oled.show()
+    print("Distance: {:.2f} cm".format(distance))
+    time.sleep(1)
